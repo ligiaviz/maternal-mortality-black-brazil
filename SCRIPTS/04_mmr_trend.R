@@ -9,7 +9,7 @@
 
 # 1. Package Management --------------------------------------------------------
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(arrow, dplyr, tidyr, ggplot2)
+pacman::p_load(arrow, dplyr, tidyr, ggplot2, broom)
 
 # 2. Load Processed Clean Datasets ---------------------------------------------
 data_proc_dir <- "data_processed"
@@ -25,7 +25,35 @@ sim_clean    <- read_parquet(sim_path)
 sinasc_clean <- read_parquet(sinasc_path)
 
 # 3. Filter Black Population & Aggregate Trends --------------------------------
-message("[PROCESSING] Computing Black maternal mortality trend (RACACOR 2 & 4)...")
+message("[PROCESSING] Computing Overall maternal mortality trend ...")
+
+deaths <- sim_clean %>%
+  group_by(year) %>%
+  summarise(deaths = n(), .groups = "drop")
+
+live_births <- sinasc_clean %>%
+  group_by(year) %>%
+  summarise(live_births = n(), .groups = "drop")
+
+mmr_trend <- live_births %>%
+  left_join(deaths, by = "year") %>%
+  mutate(
+    deaths = replace_na(deaths, 0),
+    mmr = (deaths / live_births) * 100000
+  ) %>%
+  arrange(year)
+
+total_deaths <- sum(mmr_trend$deaths)
+total_births <- sum(mmr_trend$live_births)
+period_mmr   <- (total_deaths / total_births) * 100000
+
+message("==========================================================")
+message(sprintf("Maternal Deaths (2019–2024): %d", total_deaths))
+message(sprintf("Live Births (2019–2024): %d", total_births))
+message(sprintf("Overall MMR (2019–2024): %.2f per 100,000", period_mmr))
+message("==========================================================")
+
+message("[PROCESSING] Computing combined Black maternal mortality trend ...")
 
 # Filter Black maternal deaths (2 = Preta, 4 = Parda)
 deaths_black <- sim_clean %>%
@@ -58,6 +86,8 @@ message(sprintf("Black Maternal Deaths (2019–2024): %d", b_total_deaths))
 message(sprintf("Black Live Births (2019–2024): %d", b_total_births))
 message(sprintf("Overall Black MMR (2019–2024): %.2f per 100,000", b_period_mmr))
 message("==========================================================")
+
+message("[PROCESSING] Computing White maternal mortality trend ...")
 
 # Filter White maternal deaths (1 = Branca)
 deaths_white <- sim_clean %>%
@@ -117,7 +147,9 @@ data_long <- mmr_data %>%
 data_long <- data_long %>%
   mutate(
     vjust_pos = case_when(
-      year %in% c(2023, 2024) & group == "White women (reference)" ~ 1.8, # Abaixo do ponto
+      year %in% c(2019, 2020, 2021, 2022, 2023, 2024) & group == "White women (reference)" ~ 1.8,
+      year %in% c(2021) & group == "Black women" ~ 1.8,
+      # Abaixo do ponto
       TRUE ~ -0.8 # Acima do ponto (padrão para todos os outros)
     )
   )
@@ -130,7 +162,7 @@ p <- ggplot(data_long, aes(x = year, y = mmr, color = group, linetype = group, s
   
   # Lines and points with aesthetic mapping by group
   geom_line(linewidth = 1.0) +
-  geom_point(size = 3.2) +
+  geom_point(size = 2.5) +
   
   # Numeric labels above/below the points
   geom_text(
@@ -234,8 +266,19 @@ result_2021 <- contrafactual %>%
   )
 
 print(result_2021)
-# A tibble: 2 × 6
-# race        var_pct_deaths var_pct_live_births mmr_observed mmr_contrafactual denominator_effect
-# <fct>                <dbl>               <dbl>        <dbl>             <dbl>              <dbl>
-# 1 Black women           94.3               -3.91         91.1              87.5               3.56
-# 2 White women          153.                -9.9         104.               94.0              10.3 
+
+# Poisson test for differences
+
+test_poisson <- poisson.test(
+  x = c(b_total_deaths, w_total_deaths),
+  T = c(b_total_births, w_total_births) / 100000
+)
+
+
+tidy(test_poisson) %>%
+  select(estimate, conf.low, conf.high, p.value) %>%
+  rename(
+    Rate_Ratio = estimate,
+    CI_95_Low  = conf.low,
+    CI_95_High = conf.high
+  )

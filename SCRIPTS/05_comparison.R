@@ -17,7 +17,8 @@ pacman::p_load(
   stringr,
   SpatialEpi,
   sf,
-  geobr
+  geobr,
+  tibble
 )
 
 # ==============================================================================
@@ -42,11 +43,6 @@ white <- c("Branca", "1")
 # ==============================================================================
 # 3. Causes by Race
 # ==============================================================================
-
-library(dplyr)
-library(tidyr)
-library(stringr)
-library(tibble)
 
 # 1. Helper function for cause classification (prevents code duplication)
 classify_cause <- function(causabas) {

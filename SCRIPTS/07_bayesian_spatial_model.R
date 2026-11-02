@@ -96,7 +96,9 @@ d_munic <- muni_sf %>%
     E   = ifelse(is.na(E) | E == 0, 0.001, E) # Small constant offset for Poisson GLM
   )
 
-# Zero out isolated island municipalities missing spatial contiguity
+which(d_munic$pop == 0)
+
+# Zero out isolated island municipalities missing spatial contiguity ("4300001", "4300002") and NA births ("4120309")
 d_munic[d_munic$code_muni %in% c("4300001", "4300002", "4120309"), c("Y", "pop", "E")] <- 0
 
 # ==============================================================================
@@ -136,6 +138,10 @@ if (!isSymmetric(W_final)) {
 # ==============================================================================
 message("[INFO] Running Bayesian CARBYM model (S.CARbym)...")
 set.seed(12345)
+
+d_munic <- d_munic %>%
+  mutate(
+    E = pmax(E, 1e-6))
 
 bayes_model <- S.CARbym(
   formula  = Y ~ offset(log(E)),
@@ -246,7 +252,7 @@ ggsave(
   plot     = map,
   width    = 10,
   height   = 10,
-  dpi      = 300
+  dpi      = 600
 )
 
 # Export shapefile
@@ -292,12 +298,3 @@ dev.off()
 # Values between -1.96 and +1.96 indicate convergence (p > 0.05)
 geweke_diag <- geweke.diag(beta_mcmc)
 message(sprintf("[DIAGNOSTIC] Geweke Z-score for Beta Intercept: %.4f", geweke_diag$z))
-
-
-
-
-
-
-
-
-

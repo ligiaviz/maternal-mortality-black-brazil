@@ -43,13 +43,27 @@ if (file.exists(sinasc_file)) {
 message("[PROCESSING] Standardizing SIM (Maternal Mortality) records...")
 
 domat_clean <- domat_raw %>%
-  filter(TPMORTEOCO %in% c("1", "2", "4")) %>%
-  filter(TPOBITOCOR != "06") %>%
+  # 1. Standardization and safe conversion of DTOBITO (Date of Death)
   mutate(
-    # Standardize DTOBITO to extract event year (supports DDMMYYYY or YYYY-MM-DD)
-    DTOBITO = parse_date_time(as.character(DTOBITO), orders = c("dmy", "ymd", "Y-m-d")),
-    year = year(DTOBITO)             # extract year
-    )%>% 
+    DTOBITO_STD = str_pad(as.character(DTOBITO), width = 8, side = "left", pad = "0"),
+    DTOBITO_parsed = parse_date_time(DTOBITO_STD, orders = c("dmy", "ymd", "Y-m-d")),
+    year = year(DTOBITO_parsed)
+  ) %>%
+  
+  # 2. Strict epidemiological selection using actual SIM (Mortality Information System) variables
+  filter(
+    # Criterion A: Underlying Obstetric Cause (ICD-10 Chapter XV), excluding Late maternal death (O96) and Sequelae     #(O97)
+    (grepl("^O", CAUSABAS) & !CAUSABAS %in% c("O96", "O97", "O960", "O961", "O969", "O970", "O971", "O979")) |
+      
+      # Criterion B: Specific causes outside Chapter XV recognized by WHO/Brazilian Ministry of Health
+      CAUSABAS %in% c("A34", "F53", "E230", "M830") |
+      
+      # Criterion C: Valid timing of occurrence (1=Pregnancy, 2=Childbirth, 3=Abortion, 4=Postpartum up to 42 days)
+      # Strictly EXCLUDING External/Accidental Causes (ICD-10 Chapter XX: V01 to Y98)
+      (TPMORTEOCO %in% c("1", "2", "3", "4") & !grepl("^[V-Y]", CAUSABAS))
+  ) %>%
+  
+  # 3. Variables selection
   select(CODMUNRES, RACACOR, CAUSABAS, year)
 
 # 5. Process SINASC Data (Live Births) -----------------------------------------
