@@ -1,6 +1,5 @@
 ---
 title: "README"
-author: "Ligia"
 date: "2026-10-28"
 output: html_document
 ---
